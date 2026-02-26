@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Milk Detection</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<style>
+body{
+    font-family:Arial;
+    background:linear-gradient(120deg,#0f2027,#203a43,#2c5364);
+    color:white;
+    text-align:center;
+    padding:40px;
+}
+
+.container{
+    max-width:900px;
+    margin:auto;
+    background:rgba(255,255,255,0.08);
+    backdrop-filter:blur(15px);
+    padding:30px;
+    border-radius:20px;
+}
+
+input{
+    padding:10px;
+    margin:10px;
+    border-radius:8px;
+    border:none;
+}
+
+button{
+    padding:12px 20px;
+    margin:10px;
+    border:none;
+    border-radius:10px;
+    background:linear-gradient(45deg,#00c6ff,#0072ff);
+    color:white;
+    cursor:pointer;
+}
+
+#preview{
+    max-width:300px;
+    margin-top:15px;
+    border-radius:15px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Milk RGB Detection</h2>
+
+<h3>Manual RGB Input</h3>
+<input type="number" id="r" placeholder="R (0-255)">
+<input type="number" id="g" placeholder="G (0-255)">
+<input type="number" id="b" placeholder="B (0-255)">
+
+<h3>OR Upload Strip Image</h3>
+<input type="file" id="imageInput" accept="image/*">
+<br>
+<img id="preview">
+
+<br>
+<button onclick="analyze()">Detect</button>
+<button onclick="downloadPDF()">Download PDF</button>
+
+<div id="resultBox">Result: -</div>
+<div id="phBox">pH: -</div>
+
+<canvas id="chart"></canvas>
+
+</div>
+
+<script>
+
+let latestData = null;
+let chartInstance = null;
+
+document.getElementById("imageInput").addEventListener("change", function(e){
+
+    let file = e.target.files[0];
+    if(!file) return;
+
+    let img = document.getElementById("preview");
+    img.src = URL.createObjectURL(file);
+
+    img.onload = function(){
+        extractRGB(img);
+    }
+});
+
+function extractRGB(img){
+
+    let canvas = document.createElement("canvas");
+    let ctx = canvas.getContext("2d");
+
+    canvas.width = 200;
+    canvas.height = 200;
+
+    ctx.drawImage(img,0,0,200,200);
+
+    let data = ctx.getImageData(0,0,200,200).data;
+
+    let r=0,g=0,b=0,count=0;
+
+    for(let i=0;i<data.length;i+=4){
+        r += data[i];
+        g += data[i+1];
+        b += data[i+2];
+        count++;
+    }
+
+    r = Math.round(r/count);
+    g = Math.round(g/count);
+    b = Math.round(b/count);
+
+    document.getElementById("r").value = r;
+    document.getElementById("g").value = g;
+    document.getElementById("b").value = b;
+}
+
+function analyze(){
+
+    let r = parseInt(document.getElementById("r").value) || 0;
+    let g = parseInt(document.getElementById("g").value) || 0;
+    let b = parseInt(document.getElementById("b").value) || 0;
+
+    let score = (r*0.4 + g*0.3 + b*0.3)/255;
+
+    let stage="Good";
+    if(score < 0.35) stage="Contaminated";
+    else if(score < 0.65) stage="Moderate";
+
+    let ph = 6.6 + ((g - r)/120);
+
+    document.getElementById("resultBox").innerText="Result: "+stage;
+    document.getElementById("phBox").innerText="pH: "+ph.toFixed(2);
+
+    latestData = {stage, ph:ph.toFixed(2), r,g,b};
+
+    localStorage.setItem("milkResult",JSON.stringify(latestData));
+
+    drawChart(r,g,b);
+}
+
+function drawChart(r,g,b){
+
+    if(chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(document.getElementById("chart"),{
+        type:"bar",
+        data:{
+            labels:["R","G","B"],
+            datasets:[{
+                data:[r,g,b]
+            }]
+        },
+        options:{
+            scales:{y:{min:0,max:255}}
+        }
+    });
+}
+
+function downloadPDF(){
+
+    if(!latestData) return;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.text("Milk Quality Detection Report",20,20);
+    doc.text("Stage: "+latestData.stage,20,40);
+    doc.text("pH: "+latestData.ph,20,50);
+    doc.text("RGB: "+latestData.r+", "+latestData.g+", "+latestData.b,20,60);
+
+    doc.save("Milk_Report.pdf");
+}
+
+</script>
+
+</body>
+</html>
